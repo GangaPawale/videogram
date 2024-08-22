@@ -1,151 +1,150 @@
-import { ApiErrorHandler } from "../utils/ApiErrorHandler.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
-import { ApiResponce } from "../utils/ApiResponse.js";
+import { ApiError } from "../utils/ApiError.js";
+import { ApiResponse } from "../utils/ApiResponse.js";
+import mongoose, { isValidObjectId } from "mongoose";
 import { Tweet } from "../models/tweet.model.js";
-import mongoose from "mongoose";
 
 const createTweet = asyncHandler(async (req, res) => {
-  const { content } = req.body;
+    const { content } = req.body;
 
-  if (!content || content.length < 2 || content.length > 255) {
-    throw new ApiErrorHandler(
-      400,
-      "Tweet must be between 2 and 255 characters."
-    );
-  }
-  if (!req.user?._id) {
-    throw new ApiErrorHandler(401, "Unauthorized, please login");
-  }
+    if (!content?.trim()) {
+        throw new ApiError(400, "Tweet cannot be empty");
+    }
 
-  try {
-    const newTweet = await Tweet.create({
-      content,
-      owner: req.user?._id,
+    const tweet = await Tweet.create({
+        content,
+        owner: req.user?._id,
     });
 
-    return res
-      .status(201)
-      .json(new ApiResponce(201, newTweet, "Tweet created successfully"));
-  } catch (error) {
-    throw new ApiErrorHandler(
-      error.statusCode || 500,
-      error.message || "Internal server error while creating a tweet"
-    );
-  }
-});
-
-
-
-const getUserTweets = asyncHandler(async (req, res) => {
-  if (!req.user?._id) {
-    throw new ApiErrorHandler(401, "Unauthorized, please login");
-  }
-
-  try {
-    //const user = await User.findById(userId);
-
-    const userTweets = await Tweet.find({ owner: req.user?._id });
-
-    if (!userTweets || userTweets.length === 0) {
-      return res
-        .status(200)
-        .json(new ApiResponce(400, userTweets || [], "user Tweets not found"));
+    if (!tweet) {
+        throw new ApiError(500, "Error while adding tweet");
     }
 
     return res
-      .status(200)
-      .json(
-        new ApiResponce(200, userTweets, "User tweets fetched successfully")
-      );
-  } catch (error) {
-    throw new ApiErrorHandler(
-      error.statusCode || 500,
-      error.message || "Internal server error while fetching user tweets"
-    );
-  }
+        .status(200)
+        .json(new ApiResponse(200, tweet, "Tweet created successfully"));
 });
 
-
-
 const updateTweet = asyncHandler(async (req, res) => {
-  const { tweetId } = req.params;
-  const { content } = req.body;
+    const { content } = req.body;
+    const { tweetId } = req.params;
 
-  if (
-    !mongoose.Types.ObjectId.isValid(tweetId) ||
-    !content ||
-    content.length < 2 ||
-    content.length > 255
-  ) {
-    throw new ApiErrorHandler(
-      400,
-      "Invalid tweet ID or Tweet must be between 2 and 255 characters."
-    );
-  }
-  if (!req.user?._id) {
-    throw new ApiErrorHandler(401, "Unauthorized, please login");
-  }
+    if (!content?.trim()) {
+        throw new ApiError(400, "Tweet cannot be empty");
+    }
 
-  try {
-    const updatedTweet = await Tweet.findOneAndUpdate(
-      { _id: tweetId, owner: req.user._id },
-      { $set: { content } },
-      { new: true }
+    if (!tweetId || !isValidObjectId(tweetId)) {
+        throw new ApiError(400, "Invalid tweet Id");
+    }
+
+    const tweet = await Tweet.findById(tweetId);
+
+    if (!tweet) {
+        throw new ApiError(500, "Tweet not found");
+    }
+
+    if (tweet.owner.toString() !== req.user?._id.toString()) {
+        throw new ApiError(
+            401,
+            "You do not have permission to update this tweet"
+        );
+    }
+
+    const updatedTweet = await Tweet.findByIdAndUpdate(
+        tweetId,
+        {
+            $set: { content },
+        },
+        {
+            new: true,
+        }
     );
 
     if (!updatedTweet) {
-      throw new ApiErrorHandler(
-        404,
-        "Tweet not found or unauthorized to update."
-      );
+        throw new ApiError(400, "Error while updating tweet");
     }
 
     return res
-      .status(200)
-      .json(new ApiResponce(200, updatedTweet, "Tweet updated successfully"));
-  } catch (error) {
-    throw new ApiErrorHandler(
-      error.statusCode || 500,
-      error.message || "Internal server error while updating a tweet"
-    );
-  }
+        .status(200)
+        .json(new ApiResponse(200, updatedTweet, "Tweet updated successfully"));
 });
-
-
-
 
 const deleteTweet = asyncHandler(async (req, res) => {
-  const { tweetId } = req.params;
+    const { tweetId } = req.params;
 
-  if (!mongoose.Types.ObjectId.isValid(tweetId) || !tweetId) {
-    throw new ApiErrorHandler(400, "Invalid tweet ID.");
-  }
-  if (!req.user?._id) {
-    throw new ApiErrorHandler(401, "Unauthorized, please login");
-  }
+    if (!tweetId || !isValidObjectId(tweetId)) {
+        throw new ApiError(400, "Invalid tweet Id");
+    }
+    const tweet = await Tweet.findById(tweetId);
 
-  try {
-    const deletedTweet = await Tweet.findOneAndDelete({
-      _id: tweetId,
-      owner: req.user._id,
-    });
+    if (!tweet) {
+        throw new ApiError(500, "Tweet not found");
+    }
+
+    if (tweet.owner.toString() !== req.user?._id.toString()) {
+        throw new ApiError(
+            401,
+            "You do not have permission to delete this tweet"
+        );
+    }
+
+    const deletedTweet = await Tweet.findByIdAndDelete(tweetId);
 
     if (!deletedTweet) {
-      throw new ApiErrorHandler(
-        404,
-        "Tweet not found or unauthorized to delete."
-      );
+        throw new ApiError(400, "Error while deleting tweet");
     }
 
     return res
-      .status(200)
-      .json(new ApiResponce(200, deletedTweet, "Tweet deleted successfully"));
-  } catch (error) {
-    throw new ApiErrorHandler(
-      error.statusCode || 500,
-      error.message || "Internal server error while deleting a tweet"
-    );
-  }
+        .status(200)
+        .json(new ApiResponse(200, deletedTweet, "Tweet deleted successfully"));
 });
 
-export { createTweet, getUserTweets, updateTweet, deleteTweet };
+const getUserTweets = asyncHandler(async (req, res) => {
+    const { userId } = req.params;
+
+    if (!userId || !isValidObjectId(userId)) {
+        throw new ApiError(400, "No valid user Id found");
+    }
+
+    const tweets = await Tweet.aggregate([
+        {
+            $match: {
+                owner: new mongoose.Types.ObjectId(userId),
+            },
+        },
+        {
+            $lookup: {
+                from: "likes",
+                localField: "_id",
+                foreignField: "tweet",
+                as: "likes",
+            },
+        },
+        {
+            $addFields: {
+                likesCount: {
+                    $size: "$likes",
+                },
+            },
+        },
+        {
+            $project: {
+                _id: 1,
+                content: 1,
+                likesCount: 1,
+                createdAt: 1,
+                updatedAt: 1,
+            },
+        },
+    ]);
+
+    if (!tweets?.length) {
+        throw new ApiError(401, "No tweets found for this user");
+    }
+
+    res.status(200).json(
+        new ApiResponse(200, tweets, "Tweets fetched successfully")
+    );
+});
+
+export { createTweet, updateTweet, deleteTweet, getUserTweets };
